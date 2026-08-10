@@ -67,11 +67,21 @@ python -m scripts.ingest  # chunk docs/ -> embed -> create + populate Pinecone i
 uvicorn app.main:app --reload
 ```
 
-Query it:
+**Glass-box console:** open **http://localhost:8000** — a live UI that streams the agent's
+reasoning as it works: the safety pre-flight, each knowledge-base search (with scores and
+reformulations), the decision, a confidence meter, clickable citations, and the escalation
+reason. Toggle **Operator view** off for the clean customer-facing answer; a deflection
+stats strip tracks resolved vs escalated. Streaming is Server-Sent Events over
+`GET /query/stream`.
+
+Query the JSON API directly:
 ```bash
 curl -s localhost:8000/query -H 'content-type: application/json' \
   -d '{"question":"How do I update my credit card?"}' | jq
 ```
+
+Endpoints: `GET /` (console) · `POST /query` (JSON) · `GET /query/stream` (SSE) ·
+`GET /stats` · `GET /health`.
 
 Run the smoke eval (5 tickets: High / Medium / Low / sensitive / out-of-scope):
 ```bash

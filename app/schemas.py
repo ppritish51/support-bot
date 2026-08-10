@@ -18,6 +18,7 @@ class Citation(BaseModel):
     chunk_id: str
     doc: str
     score: float
+    text: Optional[str] = None
 
 
 class QueryResponse(BaseModel):

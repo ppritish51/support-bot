@@ -76,12 +76,16 @@ TOOLS = [
 TERMINAL = {"submit_answer", "escalate"}
 
 
-def run_agent(question: str, category: str | None = None) -> dict:
-    """Run the loop. Returns a dict describing the model's terminal decision plus the
-    retrieved chunks it saw (so post-flight can validate citations & score them)."""
+def agent_stream(question: str, category: str | None = None):
+    """Generator that yields trace events as the agent works, and *returns* the final
+    terminal decision (captured via StopIteration.value). Events:
+      {type: "search", n, query, category, hits: [{chunk_id, doc, score, text}]}
+      {type: "decision", kind: "submit_answer" | "escalate", reason?}
+    """
     messages = [{"role": "user", "content": question if not category
                  else f"[category hint: {category}]\n{question}"}]
     seen_chunks: dict[str, dict] = {}  # chunk_id -> chunk (accumulated across searches)
+    search_n = 0
 
     for _ in range(settings.max_agent_iters):
         resp = _client.messages.create(
@@ -94,18 +98,31 @@ def run_agent(question: str, category: str | None = None) -> dict:
 
         tool_uses = [b for b in resp.content if b.type == "tool_use"]
         if not tool_uses:
-            # Model replied with text instead of a tool — nudge once via a fresh escalate.
-            break
+            break  # model replied with text instead of a tool -> fail-safe escalate below
 
         messages.append({"role": "assistant", "content": resp.content})
         tool_results = []
         for tu in tool_uses:
             if tu.name in TERMINAL:
+                yield {"type": "decision", "kind": tu.name,
+                       "reason": tu.input.get("reason") if tu.name == "escalate" else None}
                 return {"kind": tu.name, "input": tu.input, "seen_chunks": seen_chunks}
             if tu.name == "search_knowledge_base":
+                search_n += 1
                 chunks = search_knowledge_base(tu.input["query"], tu.input.get("category"))
                 for c in chunks:
                     seen_chunks[c["chunk_id"]] = c
+                yield {
+                    "type": "search",
+                    "n": search_n,
+                    "query": tu.input["query"],
+                    "category": tu.input.get("category"),
+                    "hits": [
+                        {"chunk_id": c["chunk_id"], "doc": c["doc"],
+                         "score": round(c["score"], 3), "text": c["text"]}
+                        for c in chunks
+                    ],
+                }
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tu.id,
@@ -113,7 +130,18 @@ def run_agent(question: str, category: str | None = None) -> dict:
                 })
         messages.append({"role": "user", "content": tool_results})
 
-    # Fail-safe: never fell through to a terminal tool -> escalate.
+    # Fail-safe: never reached a terminal tool -> escalate.
+    yield {"type": "decision", "kind": "escalate", "reason": "out_of_scope"}
     return {"kind": "escalate",
             "input": {"reason": "out_of_scope", "summary": "Agent did not reach a confident answer."},
             "seen_chunks": seen_chunks}
+
+
+def run_agent(question: str, category: str | None = None) -> dict:
+    """Non-streaming: drain the generator, return the terminal decision."""
+    gen = agent_stream(question, category)
+    while True:
+        try:
+            next(gen)
+        except StopIteration as e:
+            return e.value

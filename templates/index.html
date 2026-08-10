@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Deflector — glass-box support</title>
+<style>
+  :root{
+    --bg:#f4f7f9; --surface:#ffffff; --ink:#0f172a; --muted:#64748b; --faint:#94a3b8;
+    --line:#e6ebf1; --accent:#0d9488; --accent-ink:#0b6b62; --accent-weak:#ecfdf8;
+    --high:#16a34a; --high-bg:#f0fdf4; --med:#d97706; --med-bg:#fffbeb;
+    --esc:#dc2626; --esc-bg:#fef2f2;
+    --radius:14px; --pill:999px;
+    --shadow:0 1px 2px rgba(15,23,42,.05), 0 10px 30px rgba(15,23,42,.06);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    line-height:1.5;-webkit-font-smoothing:antialiased;}
+  a{color:var(--accent-ink)}
+
+  /* Top bar */
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:14px 22px;background:var(--surface);border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:10;flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em}
+  .brand .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 0 4px var(--accent-weak)}
+  .brand small{display:block;font-weight:500;color:var(--muted);font-size:12px;letter-spacing:0}
+  .bar-right{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .stats{display:flex;gap:8px}
+  .stat{background:var(--bg);border:1px solid var(--line);border-radius:var(--pill);
+    padding:5px 12px;font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center}
+  .stat b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .stat.defl b{color:var(--accent-ink)}
+  .toggle{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
+  .switch{position:relative;width:38px;height:22px;border-radius:var(--pill);background:#cbd5e1;transition:.18s}
+  .switch::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:.18s}
+  input#op{display:none}
+  input#op:checked + .switch{background:var(--accent)}
+  input#op:checked + .switch::after{transform:translateX(16px)}
+
+  /* Layout */
+  .wrap{max-width:840px;margin:0 auto;padding:28px 22px 80px}
+
+  /* Ask card */
+  .ask{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:18px}
+  .ask textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:13px 14px;
+    font-family:inherit;font-size:15px;color:var(--ink);resize:vertical;min-height:74px;background:#fcfdfe}
+  .ask textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
+  .row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+  select{border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-family:inherit;
+    font-size:13px;color:var(--ink);background:#fcfdfe}
+  .btn{margin-left:auto;background:var(--accent);color:#fff;border:none;border-radius:9px;
+    padding:10px 20px;font-weight:600;font-size:14px;cursor:pointer;transition:.15s}
+  .btn:hover{background:var(--accent-ink)}
+  .btn:disabled{opacity:.55;cursor:default}
+  .examples{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .ex{border:1px dashed var(--line);background:#fff;color:var(--muted);border-radius:var(--pill);
+    padding:6px 12px;font-size:12.5px;cursor:pointer;transition:.15s}
+  .ex:hover{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-weak)}
+
+  /* Stage */
+  .stage{margin-top:22px;display:flex;flex-direction:column;gap:16px}
+  .status{display:none;align-items:center;gap:10px;color:var(--muted);font-size:13.5px}
+  .status.on{display:flex}
+  .spinner{width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--accent);
+    border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow:hidden;animation:rise .28s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .card .hd{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;
+    gap:9px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+  .card .bd{padding:16px}
+
+  /* Trace (operator only) */
+  .trace{display:none}
+  body.operator .trace{display:block}
+  .steps{display:flex;flex-direction:column;gap:10px}
+  .step{border:1px solid var(--line);border-radius:11px;padding:11px 13px;background:#fcfdfe;
+    animation:rise .25s ease both}
+  .step .top{display:flex;align-items:center;gap:8px;font-size:13px}
+  .step .tag{font-family:var(--mono);font-size:11px;background:var(--accent-weak);color:var(--accent-ink);
+    padding:2px 8px;border-radius:var(--pill)}
+  .step .q{color:var(--ink);font-weight:500}
+  .step .reform{color:var(--med);font-size:11.5px;font-weight:600}
+  .hits{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+  .hit{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--pill);
+    padding:4px 10px;font-size:12px;background:#fff;cursor:pointer}
+  .hit:hover{border-color:var(--accent)}
+  .hit .id{font-family:var(--mono);color:var(--muted)}
+  .hit .sc{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums}
+  .chunk{display:none;margin-top:8px;padding:10px 12px;background:#f8fafc;border:1px solid var(--line);
+    border-radius:9px;font-size:13px;color:var(--muted);white-space:pre-wrap}
+  .chunk.show{display:block}
+
+  /* Confidence meter */
+  .meter-wrap{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+  .badge{font-size:12px;font-weight:700;padding:5px 12px;border-radius:var(--pill);text-transform:uppercase;
+    letter-spacing:.04em}
+  .badge.High{color:var(--high);background:var(--high-bg)}
+  .badge.Medium{color:var(--med);background:var(--med-bg)}
+  .badge.Low{color:var(--esc);background:var(--esc-bg)}
+  .track{flex:1;height:8px;border-radius:var(--pill);background:#eef2f6;overflow:hidden}
+  .fill{height:100%;width:0;border-radius:var(--pill);transition:width .5s ease}
+  .fill.High{background:var(--high)} .fill.Medium{background:var(--med)} .fill.Low{background:var(--esc)}
+
+  .answer{font-size:15.5px;color:var(--ink)}
+  .cites{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+  .cite{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--pill);
+    padding:5px 12px;font-size:12.5px;cursor:pointer;background:#fff}
+  .cite:hover{border-color:var(--accent);background:var(--accent-weak)}
+  .cite .doc{font-family:var(--mono);color:var(--accent-ink)}
+  .cite .sc{font-family:var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+  .op-only{display:none}
+  body.operator .op-only{display:inline}
+
+  /* Escalation */
+  .escalate{border-left:4px solid var(--esc)}
+  .escalate .hd{color:var(--esc)}
+  .esc-body{display:flex;gap:13px;align-items:flex-start}
+  .esc-ic{font-size:22px;line-height:1}
+  .esc-title{font-weight:600;color:var(--ink)}
+  .esc-detail{color:var(--muted);font-size:13.5px;margin-top:3px}
+  .esc-detail code{font-family:var(--mono);background:#f1f5f9;padding:1px 6px;border-radius:5px}
+
+  .foot{color:var(--faint);font-size:12px;text-align:center;margin-top:28px;line-height:1.7}
+</style>
+</head>
+<body class="operator">
+  <div class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>Deflector<small>glass-box support agent</small></span>
+    </div>
+    <div class="bar-right">
+      <div class="stats" id="stats">
+        <div class="stat">Resolved <b id="s-res">0</b></div>
+        <div class="stat">Escalated <b id="s-esc">0</b></div>
+        <div class="stat defl">Deflection <b id="s-pct">0%</b></div>
+      </div>
+      <label class="toggle" title="Operator view reveals the agent's reasoning trace and scores">
+        <input type="checkbox" id="op" checked />
+        <span class="switch"></span>
+        Operator view
+      </label>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="ask">
+      <textarea id="q" placeholder="Paste a customer ticket…  (⌘/Ctrl + Enter to send)"></textarea>
+      <div class="row">
+        <select id="cat" title="Optional category hint">
+          <option value="">Category: auto</option>
+          <option value="billing">billing</option>
+          <option value="api">api</option>
+          <option value="integrations">integrations</option>
+          <option value="authentication">authentication</option>
+          <option value="account">account</option>
+          <option value="data">data</option>
+        </select>
+        <button class="btn" id="send">Resolve ticket</button>
+      </div>
+      <div class="examples" id="examples"></div>
+    </div>
+
+    <div class="stage">
+      <div class="status" id="status"><span class="spinner"></span><span id="status-txt">Working…</span></div>
+      <div class="card trace" id="trace" style="display:none">
+        <div class="hd">Agent trace</div>
+        <div class="bd"><div class="steps" id="steps"></div></div>
+      </div>
+      <div id="result"></div>
+    </div>
+
+    <div class="foot">
+      Answers are grounded in a knowledge base and cited. Sensitive requests and low-confidence
+      answers are routed to a human — deterministically, in code.
+    </div>
+  </div>
+
+<script>
+const EXAMPLES = [
+  "How do I update the credit card on my account?",
+  "your API keeps throwing 429 when I hit it a lot, how do I fix it?",
+  "Refund my last payment to card 4111 1111 1111 1111",
+  "Does your product integrate with Salesforce?",
+];
+const REASON_TEXT = {
+  sensitive_data: ["Sensitive data detected", "This ticket contains personal or secret data, so a human handles it."],
+  out_of_scope:   ["Not covered by the knowledge base", "The agent couldn't find a grounded answer in the docs."],
+  low_confidence: ["Low confidence in available sources", "The best matches weren't strong enough to answer reliably."],
+};
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => (s || "").replace(/[&<>]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c]));
+
+// example chips
+const exWrap = $("examples");
+EXAMPLES.forEach((t) => {
+  const b = document.createElement("button");
+  b.className = "ex"; b.textContent = t.length > 46 ? t.slice(0, 44) + "…" : t;
+  b.onclick = () => { $("q").value = t; $("q").focus(); };
+  exWrap.appendChild(b);
+});
+
+$("op").onchange = (e) => document.body.classList.toggle("operator", e.target.checked);
+
+function setStats(s){ if(!s) return; $("s-res").textContent=s.resolved; $("s-esc").textContent=s.escalated; $("s-pct").textContent=s.deflection_pct+"%"; }
+fetch("/stats").then(r=>r.json()).then(setStats).catch(()=>{});
+
+let source = null;
+
+function addSearchStep(ev){
+  const step = document.createElement("div");
+  step.className = "step";
+  const reform = ev.n > 1 ? '<span class="reform">↻ reformulated</span>' : '';
+  const cat = ev.category ? `<span class="tag">${esc(ev.category)}</span>` : '';
+  let hits = ev.hits.map((h) =>
+    `<div class="hit" data-t="${esc(h.text)}"><span class="id">${esc(h.chunk_id)}</span><span class="sc">${h.score.toFixed(2)}</span></div>`
+  ).join("");
+  step.innerHTML =
+    `<div class="top"><span class="tag">search #${ev.n}</span>${cat}<span class="q">"${esc(ev.query)}"</span>${reform}</div>
+     <div class="hits">${hits || '<span style="color:var(--faint);font-size:12px">no matches</span>'}</div>
+     <div class="chunk" id="chunk-slot"></div>`;
+  step.querySelectorAll(".hit").forEach((el) => {
+    el.onclick = () => {
+      const slot = step.querySelector(".chunk");
+      slot.textContent = el.dataset.t;
+      slot.classList.toggle("show");
+    };
+  });
+  $("steps").appendChild(step);
+}
+
+function addDecision(ev){
+  const step = document.createElement("div");
+  step.className = "step";
+  const label = ev.kind === "submit_answer" ? "answered" : `escalated${ev.reason ? " · " + ev.reason : ""}`;
+  step.innerHTML = `<div class="top"><span class="tag">decision</span><span class="q">${esc(label)}</span></div>`;
+  $("steps").appendChild(step);
+}
+
+function renderResult(ev){
+  const box = $("result");
+  if (ev.escalate){
+    const [title, sub] = REASON_TEXT[ev.escalation_reason] || ["Escalated to a human", ""];
+    const detail = ev.escalation_detail ? ` <code>${esc(ev.escalation_detail)}</code>` : "";
+    box.innerHTML =
+      `<div class="card escalate"><div class="hd">Escalated → human review</div>
+        <div class="bd"><div class="esc-body"><div class="esc-ic">🙋</div><div>
+          <div class="esc-title">${esc(title)}</div>
+          <div class="esc-detail">${esc(sub)}${detail}</div>
+        </div></div></div></div>`;
+    return;
+  }
+  const width = { High: 92, Medium: 60, Low: 30 }[ev.confidence] || 40;
+  const cites = ev.citations.map((c) =>
+    `<div class="cite" data-t="${esc(c.text)}"><span class="doc">${esc(c.doc)}</span><span class="sc op-only">${c.score.toFixed(2)}</span></div>`
+  ).join("");
+  box.innerHTML =
+    `<div class="card"><div class="hd">Answer</div><div class="bd">
+      <div class="meter-wrap">
+        <span class="badge ${ev.confidence}">${ev.confidence}</span>
+        <div class="track"><div class="fill ${ev.confidence}" id="fill"></div></div>
+      </div>
+      <div class="answer">${esc(ev.answer)}</div>
+      <div class="cites">${cites}</div>
+    </div></div>`;
+  requestAnimationFrame(() => { const f = $("fill"); if (f) f.style.width = width + "%"; });
+  box.querySelectorAll(".cite").forEach((el) => {
+    el.onclick = () => {
+      let slot = el.parentElement.nextElementSibling;
+      if (!slot || !slot.classList.contains("chunk")) {
+        slot = document.createElement("div"); slot.className = "chunk";
+        el.parentElement.after(slot);
+      }
+      slot.textContent = el.dataset.t; slot.classList.toggle("show");
+    };
+  });
+}
+
+function run(){
+  const q = $("q").value.trim();
+  if (!q) return;
+  if (source) source.close();
+
+  $("steps").innerHTML = ""; $("result").innerHTML = "";
+  $("trace").style.display = "block";
+  $("status").classList.add("on"); $("status-txt").textContent = "Working…";
+  $("send").disabled = true;
+
+  const cat = $("cat").value;
+  const url = "/query/stream?question=" + encodeURIComponent(q) + (cat ? "&category=" + cat : "");
+  source = new EventSource(url);
+
+  source.onmessage = (m) => {
+    const ev = JSON.parse(m.data);
+    if (ev.type === "preflight"){
+      const s = document.createElement("div"); s.className = "step";
+      const ok = ev.sensitive
+        ? `<span class="tag" style="background:var(--esc-bg);color:var(--esc)">sensitive</span><span class="q">flagged: <code>${esc(ev.detail||"")}</code></span>`
+        : `<span class="tag">pre-flight</span><span class="q">safety scan — clean</span>`;
+      s.innerHTML = `<div class="top">${ok}</div>`; $("steps").appendChild(s);
+      $("status-txt").textContent = ev.sensitive ? "Routing to a human…" : "Searching the knowledge base…";
+    }
+    else if (ev.type === "search"){ addSearchStep(ev); $("status-txt").textContent = "Evaluating results…"; }
+    else if (ev.type === "decision"){ addDecision(ev); }
+    else if (ev.type === "result"){ renderResult(ev); setStats(ev.stats); }
+    else if (ev.type === "done"){ source.close(); source = null; $("status").classList.remove("on"); $("send").disabled = false; }
+  };
+  source.onerror = () => {
+    if (source){ source.close(); source = null; }
+    $("status-txt").textContent = "Connection error — is the server running and keys set?";
+    $("send").disabled = false;
+  };
+}
+
+$("send").onclick = run;
+$("q").addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") run();
+});
+</script>
+</body>
+</html>
