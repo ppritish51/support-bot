@@ -111,6 +111,10 @@
   .fill.High{background:var(--high)} .fill.Medium{background:var(--med)} .fill.Low{background:var(--esc)}
 
   .answer{font-size:15.5px;color:var(--ink)}
+  .answer p{margin:0 0 10px} .answer p:last-child{margin-bottom:0}
+  .answer ol,.answer ul{margin:8px 0;padding-left:22px} .answer li{margin:4px 0}
+  .answer strong{font-weight:650}
+  .answer code{font-family:var(--mono);background:#f1f5f9;padding:1px 6px;border-radius:5px;font-size:13px}
   .cites{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
   .cite{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--pill);
     padding:5px 12px;font-size:12.5px;cursor:pointer;background:#fff}
@@ -201,6 +205,34 @@ const REASON_TEXT = {
 const $ = (id) => document.getElementById(id);
 const esc = (s) => (s || "").replace(/[&<>]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c]));
 
+// Minimal, XSS-safe Markdown -> HTML (escape first, then a small safe subset).
+function mdToHtml(src){
+  let t = esc((src || "").trim());
+  t = t.replace(/([^\n])\s+(\d+\.\s)/g, "$1\n$2"); // break inline "2." steps onto lines
+  const inline = (s) => s
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+  const out = []; let list = null;
+  const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const raw of t.split("\n")){
+    const line = raw.trim();
+    if (!line) { close(); continue; }
+    let m;
+    if ((m = line.match(/^\d+\.\s+(.*)/))){
+      if (list !== "ol") { close(); out.push("<ol>"); list = "ol"; }
+      out.push(`<li>${inline(m[1])}</li>`);
+    } else if ((m = line.match(/^[-*]\s+(.*)/))){
+      if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; }
+      out.push(`<li>${inline(m[1])}</li>`);
+    } else {
+      close(); out.push(`<p>${inline(line)}</p>`);
+    }
+  }
+  close();
+  return out.join("");
+}
+
 // example chips
 const exWrap = $("examples");
 EXAMPLES.forEach((t) => {
@@ -270,7 +302,7 @@ function renderResult(ev){
         <span class="badge ${ev.confidence}">${ev.confidence}</span>
         <div class="track"><div class="fill ${ev.confidence}" id="fill"></div></div>
       </div>
-      <div class="answer">${esc(ev.answer)}</div>
+      <div class="answer">${mdToHtml(ev.answer)}</div>
       <div class="cites">${cites}</div>
     </div></div>`;
   requestAnimationFrame(() => { const f = $("fill"); if (f) f.style.width = width + "%"; });

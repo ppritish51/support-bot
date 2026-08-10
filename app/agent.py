@@ -27,7 +27,9 @@ Workflow:
    supported by those chunks.
 3. If the knowledge base does not cover the question, call escalate with reason "out_of_scope".
 
-Always finish by calling either submit_answer or escalate. Keep answers concise and factual."""
+Always finish by calling either submit_answer or escalate. Keep answers concise and factual.
+Format the answer in Markdown: use a numbered list with ONE step per line for procedures,
+and **bold** for UI labels and button names."""
 
 TOOLS = [
     {
