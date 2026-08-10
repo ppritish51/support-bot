@@ -16,11 +16,19 @@ the model handles judgment (how to search, can I answer?), code handles guarante
 
 ## Demo
 
-![Glass-box deflection console — streaming agent trace, confidence meter, citations, and escalation](demo-1.gif)
-
 The console streams the agent's reasoning live: safety pre-flight → knowledge-base
 searches (with scores and reformulations) → decision → a confidence-scored, cited answer,
 or a routed-to-human escalation.
+
+**Resolving a ticket — grounded, cited, High confidence:**
+
+![Deflector resolving a ticket with a confidence meter and citation](demo-1.gif)
+
+**Agentic re-search → honest escalation:** when the knowledge base doesn't cover the
+question, the agent reformulates its search several times, then escalates out-of-scope
+instead of guessing.
+
+![Deflector reformulating searches and escalating an out-of-scope ticket](demo-2.gif)
 
 ---
 
