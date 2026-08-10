@@ -14,6 +14,16 @@ the model handles judgment (how to search, can I answer?), code handles guarante
 
 ---
 
+## Demo
+
+![Glass-box deflection console — streaming agent trace, confidence meter, citations, and escalation](demo-1.gif)
+
+The console streams the agent's reasoning live: safety pre-flight → knowledge-base
+searches (with scores and reformulations) → decision → a confidence-scored, cited answer,
+or a routed-to-human escalation.
+
+---
+
 ## Architecture
 
 ```
